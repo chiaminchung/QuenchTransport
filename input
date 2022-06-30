@@ -1,0 +1,54 @@
+basic
+{
+    L_lead = 40
+    L_device = 2
+    t_lead = 1
+    t_device = 0.4
+    t_contactL = 0.2
+    t_contactR = 0.2
+    mu_leadL = 0
+    mu_leadR = 0
+    mu_device = -0.1
+    Delta = 0.5
+    Ec = 1
+    Ng = 0.5
+    EJ = 0
+    damp_decay_length = 20
+    maxCharge = 5
+
+    mu_biasL = 0.05
+    mu_biasS = 0
+    mu_biasR = -0.05
+    dt = 1
+    time_steps = 40
+
+    // Parameters for TDVP and subspace expansion
+    // Do not need to change them if you don't know their meaning
+    NumCenter = 1
+    mixNumCenter = no
+    globExpanN = 10000000
+    globExpanItv = 1
+    globExpanCutoff = 1e-4
+    globExpanKrylovDim = 2
+    globExpanHpsiCutoff = 1e-14
+    globExpanHpsiMaxDim = 100
+    globExpanMethod = Fit
+    Truncate = yes
+
+    write = no
+    write_dir = .
+    write_file = timeevol.save
+    read = no
+    read_dir = .
+    read_file = timeevol.save
+
+    // Write the tensors into disk if the bond dimension is equal or larger than WriteDim
+    WriteDim = 800
+
+    // For TDVP
+    sweeps
+    {
+        maxm   minm   cutoff   niter  noise    nsweep
+        2000   16     1E-7     30     0        1
+    }
+}
