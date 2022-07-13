@@ -1,7 +1,7 @@
 basic
 {
-    L_lead = 40
-    L_device = 2
+    L_lead = 20
+    L_device = 4
     t_lead = 1
     t_device = 0.4
     t_contactL = 0.2
@@ -10,11 +10,14 @@ basic
     mu_leadR = 0
     mu_device = -0.1
     Delta = 0.5
-    Ec = 1
-    Ng = 0.5
+    Ec = 0.5
+    Ng = 0
     EJ = 0
-    damp_decay_length = 20
+    damp_decay_length = 40
     maxCharge = 5
+
+    // Can be SC or real_space
+    scatter_basis = SC
 
     mu_biasL = 0.05
     mu_biasS = 0
@@ -22,8 +25,6 @@ basic
     dt = 1
     time_steps = 40
 
-    // Parameters for TDVP and subspace expansion
-    // Do not need to change them if you don't know their meaning
     NumCenter = 1
     mixNumCenter = no
     globExpanN = 10000000
@@ -35,17 +36,21 @@ basic
     globExpanMethod = Fit
     Truncate = yes
 
+    SubCorrN = 1000
+    corr_cutoff = 1e-12
+
     write = no
-    write_dir = .
+    write_dir = /nbi/user-scratch/s/swp778/conductance/data/majorana/ec/mu0.1_Ec0.5_Delta0.5/Ng0.5/Vb0.05
     write_file = timeevol.save
     read = no
-    read_dir = .
+    read_dir = /nbi/user-scratch/s/swp778/conductance/data/majorana/ec/mu0.1_Ec0.5_Delta0.5/Ng0.5/Vb0.05
     read_file = timeevol.save
 
-    // Write the tensors into disk if the bond dimension is equal or larger than WriteDim
-    WriteDim = 800
+    verbose = yes
+    useSVD = no
+    SVDMethod = gesdd
 
-    // For TDVP
+    WriteDim = 800
     sweeps
     {
         maxm   minm   cutoff   niter  noise    nsweep

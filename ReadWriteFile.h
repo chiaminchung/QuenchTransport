@@ -8,7 +8,7 @@
 using namespace std;
 using namespace itensor;
 
-namespace iutility {
+namespace iut {
 
 // -------- General --------
 template <typename T>

@@ -65,6 +65,7 @@ Matrix BdG_Hamilt (int L, Real t, Real mu, Real Delta)
 class BdGBasis
 {
     public:
+        BdGBasis () {}
         BdGBasis (const string& name, int L, Real t, Real mu, Real Delta);
 
         tuple<vector<Real>,vector<int>,vector<string>> C (int i);
@@ -192,11 +193,16 @@ Matrix symmetrice_zero_energy_modes (const Vector& ens, Matrix U, Real zero_crit
     return U;
 }
 
-bool orthogonal_to_particle_hole_transform (const Vector& v)
+void check_orthogonal_to_particle_hole_transform (const Vector& v)
 {
     Vector w = particle_hole_transform (v);
     auto o = w*v;
-    return (abs(o) < 1e-10);
+    if (!(abs(o) < 1e-8))
+    {
+        cout << "Not orthogonal to its particle-hole transformed state" << endl;
+        cout << abs(o) << endl;
+        throw;
+    }
 }
 
 BdGBasis :: BdGBasis (const string& name, int L, Real t, Real mu, Real Delta)
@@ -233,7 +239,7 @@ BdGBasis :: BdGBasis (const string& name, int L, Real t, Real mu, Real Delta)
     {
         // Check the state is orthogonal to its particle-hole transformed state
         auto phi = Vector (column (U, i));
-        mycheck (orthogonal_to_particle_hole_transform (phi), "Not orthogonal to its particle-hole transformed state");
+        //check_orthogonal_to_particle_hole_transform (phi);
 
         _ens(j) = 2.*ens(i);
         column (_u,j) &= subVector (phi,0,N);
@@ -255,7 +261,7 @@ BdGBasis :: BdGBasis (const string& name, int L, Real t, Real mu, Real Delta)
         Hd(i,i) -= 0.5*_ens(i);
         Hd(i+N,i+N) += 0.5*_ens(i);
     }
-    mycheck (abs(norm(Hd)) < 1e-14, "Construct unitray matrix failed");
+    mycheck (abs(norm(Hd)) < 1e-10, "Construct unitray matrix failed");
 }
 
 // i is the site index in real space

@@ -1,6 +1,6 @@
 #ifndef __INITSTATE_H_CMC__
 #define __INITSTATE_H_CMC__
-#include "SystemStruct.h"
+#include "SortBasis.h"
 
 // The charging energy is Ec * (N - Ng)^2
 // Find out N that lowest the charging energy in even and odd number of particle sectors
@@ -35,43 +35,43 @@ tuple <Real,Real,int,int> en_charging_energy (int maxOcc, Real Ec, Real Ng)
     return {en_even, en_odd, n_even, n_odd};
 }
 
-template <typename SiteType, typename Para>
-MPS get_ground_state_BdG_scatter (const WireSystem& sys, const SiteType& sites, Real muL, Real muS, Real muR, const Para& para, int maxOcc)
+template <typename BasisL, typename BasisR, typename BasisS, typename SiteType, typename Para>
+MPS get_ground_state_BdG_scatter (const BasisL& leadL, const BasisR& leadR, const BasisS& scatterer,
+                                  const SiteType& sites, Real muL, Real muR, const Para& para, int maxOcc, const ToGlobDict& to_glob)
 {
-    mycheck (length(sites) == sys.N(), "size not match");
+    int N = to_glob.size();
+    mycheck (length(sites) == N, "size not match");
+
     // Get the ground state for SC (even particle number)
-    vector<string> state (sys.N()+1);
-    map<string,Real> mu {{"L",muL}, {"R",muR}, {"S",muS}};
-    Real E = 0.;
-    for(int i = 1; i <= length(sites); i++)
+    vector<string> state (N+1);
+
+    // Leads
+    auto occ_negative_en_states = [&to_glob, &state] (const auto& basis, Real mu)
     {
-        auto [p, k] = sys.to_loc (i);
-        if (p == "L" or p == "R")
+        string p = basis.name();
+        for(int k = 1; k <= basis.size(); k++)
         {
-            auto const& en = visit (basis::en(k), sys.parts().at(p));
-            if (en < mu.at(p))
+            int i = to_glob.at({p,k});
+            auto en = basis.en(k);
+            if (en < mu)
                 state.at(i) = "Occ";
             else
                 state.at(i) = "Emp";
-            E += en;
         }
-        else if (p == "S")
-        {
-            state.at(i) = "Emp";
-        }
-        else if (p == "C")
-        {
-//            state.at(i) = "0";
-        }
-        else
-        {
-            cout << "Unknown partition:" << p << endl;
-            throw;
-        }
+    };
+    occ_negative_en_states (leadL, muL);
+    occ_negative_en_states (leadR, muR);
+
+    // Scatterer
+    string sname = scatterer.name();
+    for(int k = 1; k <= scatterer.size(); k++)
+    {
+        int i = to_glob.at({sname,k});
+        state.at(i) = "Emp";
     }
 
     // Superconducting gap
-    Real SC_gap = visit (basis::en(1), sys.parts().at("S"));
+    Real SC_gap = scatterer.en(1);
     cout << "SC gap = " << SC_gap << endl;
 
 
@@ -85,7 +85,7 @@ MPS get_ground_state_BdG_scatter (const WireSystem& sys, const SiteType& sites, 
     cout << "E (even,odd) = " << en0 << ", " << en1 << endl;
     if (en1 < en0) // First excited state in superconductor
     {
-        int is1 = sys.to_glob ("S",1);
+        int is1 = to_glob.at({"S",1});
         state.at(is1) = "Occ";
         cout << "Ground state has odd parity" << endl;
     }
@@ -96,11 +96,11 @@ MPS get_ground_state_BdG_scatter (const WireSystem& sys, const SiteType& sites, 
     int  n   = (en0 <= en1 ? n_even : n_odd);
     cout << "Initial charge = " << n << endl;
     // Set the charge site
-    int ic = sys.to_glob ("C",1);
+    int ic = to_glob.at({"C",1});
     state.at(ic) = str(n);
     // Set state
     InitState init (sites);
-    for(int i = 1; i <= sys.N(); i++)
+    for(int i = 1; i <= N; i++)
         init.set (i, state.at(i));
 
     auto psi = MPS (init);
@@ -126,69 +126,73 @@ exit(0);*/
     return psi;
 }
 
-template <typename SiteType>
-MPS get_non_inter_ground_state (const WireSystem& sys, const SiteType& sites, Real muL=0., Real muS=0., Real muR=0.)
+template <typename BasisL, typename BasisR, typename BasisS, typename BasisC, typename SiteType>
+MPS get_non_inter_ground_state (const BasisL& leadL, const BasisR& leadR, const BasisS& scatterer, const BasisC& charge,
+                                const SiteType& sites, Real muL, Real muS, Real muR, const ToGlobDict& to_glob)
 {
-    mycheck (length(sites) == sys.N(), "size not match");
+    int N = to_glob.size();
+    mycheck (length(sites) == N, "size not match");
+
     int Ns=0, Np=0;
     Real E = 0.;
-    vector<string> state (sys.N()+1, "Emp");
-    for(string p : {"L","S","R"})
+    vector<string> state (N+1, "Emp");
+
+    // Leads and scatterer
+    auto occ_negative_en_states = [&to_glob, &state, &E, &Np, &Ns] (const auto& basis, Real mu)
     {
-        auto const& chain = sys.parts().at(p);
-        Real mu;
-        if (p == "L")      mu = muL;
-        else if (p == "R") mu = muR;
-        else if (p == "S") mu = muS;
-        for(int i = 1; i <= visit (basis::size(), chain); i++)
+        string p = basis.name();
+        for(int k = 1; k <= basis.size(); k++)
         {
-            auto const& en = visit (basis::en(i), chain);
-            int j = sys.to_glob (p, i);
-            if (en-mu < 0.)
+            int i = to_glob.at({p,k});
+            auto en = basis.en(k);
+            if (en < mu)
             {
-                state.at(j) = "Occ";
+                state.at(i) = "Occ";
                 E += en;
                 Np++;
                 if (p == "S")
                     Ns++;
             }
+            else
+            {
+                state.at(i) = "Emp";
+            }
         }
-    }
+    };
+    occ_negative_en_states (leadL, muL);
+    occ_negative_en_states (leadR, muR);
+    occ_negative_en_states (scatterer, muS);
+
     // Capacity site
     {
-        int j = sys.to_glob ("C",1);
+        int j = to_glob.at({"C",1});
         state.at(j) = "0";
     }
 
     InitState init (sites);
-    for(int i = 1; i <= sys.N(); i++)
+    for(int i = 1; i <= N; i++)
         init.set (i, state.at(i));
 
     // Print information
-    cout << "orbitals, segment, ki, energy, state" << endl;
-    for(int i = 1; i <= sys.orbs().size(); i++)
-    {
-        auto [seg, ki, en] = sys.orbs().at(i-1);
-        cout << i << " " << seg << " " << ki << " " << en << " " << state.at(i) << endl;
-    }
     cout << "initial energy = " << E << endl;
     cout << "initial particle number = " << Np << endl;
     return MPS (init);
 }
 
+template <typename BasisS>
 tuple<MPS,MPS,Real,Real,Real,Real,int>
 get_scatter_ground_state_SC
-(const WireSystem& sys, Real mu, Real Delta,
- const Sweeps& sweeps, const Args& args)
+(const BasisS& scatterer, Real mu, Real Delta, const Sweeps& sweeps, const ToGlobDict& to_glob, const Args& args)
 {
-    auto chain = sys.parts().at("S");
-    SpecialFermion sites (visit (basis::size(), chain), {args,"in_scatter",true});
+    int Ns = scatterer.size();
+    SpecialFermion sites (Ns, {args,"in_scatter",true});
 
     // Find the first site of the scatter
+    string sname = scatterer.name();
     int imin = std::numeric_limits<int>::max();
-    for(int i = 1; i <= visit(basis::size(),chain); i++)
+    for(int i = 1; i <= Ns; i++)
     {
-        int j = sys.to_glob ("S",i);
+        int j = to_glob.at({sname,i});
         if (imin > j)
             imin = j;
     }
@@ -196,21 +200,20 @@ get_scatter_ground_state_SC
     int L_offset = imin-1;
     AutoMPO ampo (sites);
     // Diagonal terms
-    for(int i = 1; i <= visit(basis::size(),chain); i++)
+    for(int i = 1; i <= Ns; i++)
     {
-        int j = sys.to_glob ("S",i)-L_offset;
-        auto en = visit (basis::en(i), chain);
+        int j = to_glob.at({sname,i}) - L_offset;
+        auto en = scatterer.en(i);
         ampo += en-mu, "N", j;
     }
     // Superconducting
-    string p = "S";
-    for(int i = 1; i < visit (basis::size(), chain); i++)
+    for(int i = 1; i < Ns; i++)
     {
-        auto terms = quadratic_operator (chain, chain, i, i+1, false, false);
+        auto terms = quadratic_operator (scatterer, scatterer, i, i+1, false, false);
         for(auto [c12, k1, dag1, k2, dag2] : terms)
         {
-            int j1 = sys.to_glob (p,k1) - L_offset;
-            int j2 = sys.to_glob (p,k2) - L_offset;
+            int j1 = to_glob.at({sname,k1}) - L_offset;
+            int j2 = to_glob.at({sname,k2}) - L_offset;
             if (j1 != j2)
             {
                 auto c = Delta * c12;
@@ -246,37 +249,46 @@ get_scatter_ground_state_SC
     return {psi0, psi1, en0, en1, Np0, Np1, L_offset};
 }
 
-template <typename SiteType, typename Para>
-MPS get_ground_state_SC (const WireSystem& sys, const SiteType& sites,
+template <typename BasisL, typename BasisR, typename BasisS, typename BasisC, typename SiteType, typename Para>
+MPS get_ground_state_SC (const BasisL& leadL, const BasisR& leadR, const BasisS& scatterer, const BasisC& charge,
+                         const SiteType& sites,
                          Real muL, Real muS, Real muR, const Para& para,
-                         const Sweeps& sweeps, const Args& args)
+                         const Sweeps& sweeps, const ToGlobDict& to_glob, const Args& args)
 {
-    mycheck (length(sites) == sys.N(), "size not match");
-    // Leads
+    int N = to_glob.size();
+    mycheck (length(sites) == N, "size not match");
+
     Real E_lead = 0.;
     int Np_lead = 0;
-    vector<string> state (sys.N()+1, "Emp");
-    for(string p : {"L","R"})
+    vector<string> state (N+1, "Emp");
+
+    // Leads
+    auto occ_neg_en_levels = [&E_lead, &Np_lead, &state, &to_glob] (const auto& basis, Real mu)
     {
-        auto const& chain = sys.parts().at(p);
-        Real mu = (p == "L" ? muL : muR);
-        for(int i = 1; i <= visit (basis::size(), chain); i++)
+        string p = basis.name();
+        for(int i = 1; i <= basis.size(); i++)
         {
-            auto const& en = visit (basis::en(i), chain);
-            int j = sys.to_glob (p, i);
-            if (en-mu < 0.)
+            auto en = basis.en(i);
+            int j = to_glob.at({p,i});
+            if (en < mu)
             {
                 state.at(j) = "Occ";
                 E_lead += en-mu;
                 Np_lead++;
             }
+            else
+            {
+                state.at(j) = "Emp";
+            }
         }
-    }
+    };
+    occ_neg_en_levels (leadL, muL);
+    occ_neg_en_levels (leadR, muR);
     cout << "lead E = " << E_lead << endl;
     cout << "lead Np = " << Np_lead << endl;
 
-    // Get ground state of scatter
-    auto [psi0, psi1, enSC0, enSC1, Np0, Np1, L_offset] = get_scatter_ground_state_SC (sys, muS, para.Delta, sweeps, args);
+    // Get ground state of the scatterer
+    auto [psi0, psi1, enSC0, enSC1, Np0, Np1, L_offset] = get_scatter_ground_state_SC (scatterer, muS, para.Delta, sweeps, to_glob, args);
 
     // Capacity site
     // Find out the charge numbers, which are integers, that lowest the charging energy, for even and odd parities
@@ -290,7 +302,7 @@ MPS get_ground_state_SC (const WireSystem& sys, const SiteType& sites,
     Real Np   = (en0 < en1 ? Np0 : Np1);
     auto psiS = (en0 < en1 ? psi0 : psi1);
     // Set state
-    int ic = sys.to_glob ("C",1);
+    int ic = to_glob.at({"C",1});
     state.at(ic) = str(n);
     // Print
     cout << "Init scatter Np (even,odd) = (" << Np0 << "," << Np1 << ") -> " << Np << endl;
@@ -301,7 +313,7 @@ MPS get_ground_state_SC (const WireSystem& sys, const SiteType& sites,
 
     // Initialize the leads and the charge site
     InitState init (sites);
-    for(int i = 1; i <= sys.N(); i++)
+    for(int i = 1; i <= N; i++)
         init.set (i, state.at(i));
     auto psi = MPS (init);
 
@@ -328,12 +340,6 @@ MPS get_ground_state_SC (const WireSystem& sys, const SiteType& sites,
     psi.position(1);
     psi.normalize();
 
-    cout << "orbitals, segment, ki, energy, state" << endl;
-    for(int i = 1; i <= sys.orbs().size(); i++)
-    {
-        auto [seg, ki, en] = sys.orbs().at(i-1);
-        cout << i << " " << seg << " " << ki << " " << en << " " << state.at(i) << endl;
-    }
     return psi;
 }
 

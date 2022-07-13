@@ -55,17 +55,19 @@ def get_hop_t (fname):
     return ts
 
 def get_data (fname):
+    #dmrgdir = get_para (fname, 'input_dir', str)
+    #dmrgfile = glob.glob ('../gs/*.out')[0]
     L_lead = get_para (fname, 'L_lead', int)
     L_device = get_para (fname, 'L_device', int)
     L = 2*L_lead + L_device
     Nstep = get_para (fname, 'step =', int, last=True)
-    idevL, idevR = get_para (fname, 'device site', int, n=2)
     iC = get_para (fname, 'charge site', int)
     hopt = get_hop_t (fname)
     maxnC = get_para (fname, 'maxCharge', int)
+    t_lead = get_para (fname, 't_lead', float)
 
-    Is = np.full ((Nstep,L), np.nan)
-    Is_spec = np.full ((Nstep,L-1), np.nan)
+    jLs = np.full (Nstep, np.nan)
+    jRs = np.full (Nstep, np.nan)
     ns = np.full ((Nstep,L+1), np.nan)
     Ss = np.full ((Nstep,L+1), np.nan)
     dims = np.full ((Nstep,L), np.nan)
@@ -76,15 +78,12 @@ def get_data (fname):
             if line.startswith ('step ='):
                 tmp = line.split()
                 step = int(tmp[-1])
-            elif line.startswith('*I'):
+            elif line.startswith('I L/R ='):
                 tmp = line.split()
-                ilink = int(tmp[-3])
-
-                #I = float(tmp[-1].strip('()').split(',')[0])
-                I = float(tmp[-1])
-                cc = 2*pi * hopt[ilink]
-                Is_spec[step-1,ilink-1] = I * cc
-                #Is[step-1,ilink-1] = I * cc
+                jL = float(tmp[-2]) * 2*pi * t_lead
+                jR = float(tmp[-1]) * 2*pi * t_lead
+                jLs[step-1] = jL
+                jRs[step-1] = jR
             elif line.startswith('*den '):
                 tmp = line.split()
                 i = int(tmp[1])
@@ -105,13 +104,13 @@ def get_data (fname):
                 n = int(tmp[-2])
                 nC = float(tmp[-1])
                 nCs[step-1,n+maxnC] = nC
-    # Is: current, currently not used
-    # Is_spec: current on the special links
+    # jLs: current for the link that is left to the scatterer
+    # jRs: current for the link that is right to the scatterer
     # ns: occupasion
     # Ss: entanglement entropy
     # dims: bond dimension
     # nCs: distribution on the charge site
-    return Is, Is_spec, ns, Ss, dims, nCs
+    return Nstep, L, jLs, jRs, ns, Ss, dims, nCs
 
 def plot_prof (ax, data, dt, label=''):
     Nstep, L = np.shape(data)
@@ -124,7 +123,7 @@ def plot_prof (ax, data, dt, label=''):
 def plot_time_slice (ax, data, n, xs=[], label='', **args):
     Nstep, L = np.shape(data)
     itv = Nstep // n
-    if xs == []:
+    if len(xs) == 0:
         xs = range(1,L+1)
     for d in data[::itv,:]:
         ax.plot (xs, d, **args)
@@ -134,10 +133,10 @@ def get_basis (fname):
     ens, segs = [],[]
     with open(fname) as f:
         for line in f:
-            if 'orbitals, segment, ki, energy' in line:
+            if 'Orbitals: name, ki, energy' in line:
                 for line in f:
                     tmp = line.split()
-                    if not tmp[0].isdigit():
+                    if not tmp[0][:-1].isdigit():
                         return np.array(ens), np.array(segs)
                     ens.append (float(tmp[3]))
                     segs.append (tmp[1])
@@ -163,10 +162,9 @@ if __name__ == '__main__':
         en_basis, segs = get_basis (fname)
 
         # Get data
-        Is, Is_spec, ns, Ss, dims, nCs = get_data (fname)
+        Nstep, L, jLs, jRs, ns, Ss, dims, nCs = get_data (fname)
         dt = get_para (fname, 'dt', float)
         m = get_para (fname, 'Largest link dim', int)
-        Nstep, L = np.shape(Is)
         ts = dt * np.arange(1,Nstep+1)
 
         # n profile
@@ -201,7 +199,6 @@ if __name__ == '__main__':
         plot_time_slice (ax, ns[:,ii], n=5, marker='+', ls='None', label='S', xs=sites[ii])
         ii = segs == 'C'
         plot_time_slice (ax, ns[:,ii], n=5, marker='*', ls='None', label='C', xs=sites[ii])
-        #ax.plot (range(1,len(en_basis)+1), en_basis)
         ax.set_xlabel ('site')
         ax.set_ylabel ('occupasion')
         ax.legend()
@@ -234,9 +231,6 @@ if __name__ == '__main__':
         ax.set_ylabel ('Bond dimension')
         ps.set(ax)
 
-        idevL, idevR = get_para (fname, 'device site', int, n=2)
-        idevR -= 1  # For the charge site
-
         # Charge site occupasion
         f,ax = pl.subplots()
         maxnC = get_para (fname, 'maxCharge', int)
@@ -253,8 +247,8 @@ if __name__ == '__main__':
         muL = get_para (fname, 'mu_biasL', float)
         muR = get_para (fname, 'mu_biasR', float)
         Vb = muR - muL
-        Il = Is_spec[:, idevL-3] / Vb
-        Ir = Is_spec[:, idevR] / Vb
+        Il = jLs / Vb
+        Ir = jRs / Vb
         axi.plot (ts, Il, label='left')
         axi.plot (ts, Ir, label='right')
         axi.set_xlabel ('time')
